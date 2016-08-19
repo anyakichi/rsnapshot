@@ -155,6 +155,7 @@ my $default_rsync_short_args = '-a';
 my $default_rsync_long_args  = '--delete --numeric-ids --relative --delete-excluded';
 my $default_ssh_args         = undef;
 my $default_du_args          = '-csh';
+my $default_mount_args       = '';
 
 # set default for use_lazy_deletes
 my $use_lazy_deletes = 0;    # do not delete the oldest archive until after backup
@@ -1402,6 +1403,13 @@ sub parse_config_file {
 			next;
 		}
 
+		# MOUNT ARGS
+		if ($var eq 'mount_args') {
+			$config_vars{'mount_args'} = $value;
+			$line_syntax_ok = 1;
+			next;
+		}
+
 		# LVM CMDS
 		if ($var =~ m/^linux_lvm_cmd_(lvcreate|mount)$/) {
 			$config_vars{$var} = $value;
@@ -1836,6 +1844,12 @@ sub parse_backup_opts {
 			# ssh_args
 		}
 		elsif ($name eq 'ssh_args') {
+
+			# pass unchecked
+
+			# mount_args
+		}
+		elsif ($name eq 'mount_args') {
 
 			# pass unchecked
 
@@ -3574,6 +3588,7 @@ sub rsync_backup_point {
 	my $ssh_args         = $default_ssh_args;
 	my $rsync_short_args = $default_rsync_short_args;
 	my $rsync_long_args  = $default_rsync_long_args;
+	my $mount_args       = $default_mount_args;
 
 	# other misc variables
 	my @cmd_stack = undef;
@@ -3656,6 +3671,9 @@ sub rsync_backup_point {
 	if (defined($config_vars{'ssh_args'})) {
 		$ssh_args = $config_vars{'ssh_args'};
 	}
+	if (defined($config_vars{'mount_args'})) {
+		$mount_args = $config_vars{'mount_args'};
+	}
 
 	# extra verbose?
 	if ($verbose > 3) { $rsync_short_args .= 'v'; }
@@ -3664,6 +3682,7 @@ sub rsync_backup_point {
 	# quoting - ideally we'd use Text::Balanced or similar, but that's
 	# only relatively recently gone into core
 	my @rsync_long_args_stack = split_long_args_with_quotes('rsync_long_args', $rsync_long_args);
+	my @mount_args_stack      = split_long_args_with_quotes('mount_args',      $mount_args);
 
 	# create $interval.0/$$bp_ref{'dest'} or .sync/$$bp_ref{'dest'} directory if it doesn't exist
 	# (this may create the .sync dir, which is why we had to check for it above)
@@ -3699,6 +3718,21 @@ sub rsync_backup_point {
 			split_long_args_with_quotes(
 				'extra_rsync_long_args (for a backup point)',
 				$$bp_ref{'opts'}->{'extra_rsync_long_args'}
+			)
+		);
+	}
+
+	# MOUNT ARGS
+	if (defined($$bp_ref{'opts'}) && defined($$bp_ref{'opts'}->{'mount_args'})) {
+		@mount_args_stack =
+		  split_long_args_with_quotes('mount_args (for a backup point)', $$bp_ref{'opts'}->{'mount_args'});
+	}
+	if (defined($$bp_ref{'opts'}) && defined($$bp_ref{'opts'}->{'extra_mount_args'})) {
+		push(
+			@mount_args_stack,
+			split_long_args_with_quotes(
+				'extra_mount_args (for a backup point)',
+				$$bp_ref{'opts'}->{'extra_mount_args'}
 			)
 		);
 	}
@@ -3780,7 +3814,7 @@ sub rsync_backup_point {
 
 		linux_lvm_snapshot_create(linux_lvm_parseurl($lvm_src));
 		$traps{"linux_lvm_snapshot"} = $lvm_src;
-		linux_lvm_mount(linux_lvm_parseurl($lvm_src));
+		linux_lvm_mount(linux_lvm_parseurl($lvm_src), \@mount_args_stack);
 		$traps{"linux_lvm_mountpoint"} = 1;
 
 		# rewrite src to point to mount path
@@ -4066,7 +4100,7 @@ sub linux_lvm_mount {
 
 	my $result = undef;
 
-	my ($linux_lvmvgname, $linux_lvmvolname, $linux_lvmpath) = @_;
+	my ($linux_lvmvgname, $linux_lvmvolname, $linux_lvmpath, $mount_args_stack) = @_;
 	unless (defined($linux_lvmvgname) and defined($linux_lvmvolname) and defined($linux_lvmpath)) {
 		bail("linux_lvm_mount needs 3 parameters!");
 	}
@@ -4074,6 +4108,14 @@ sub linux_lvm_mount {
 	# mount the snapshot
 	my @cmd_stack = ();
 	push(@cmd_stack, split(' ', $config_vars{'linux_lvm_cmd_mount'}));
+
+	if (@$mount_args_stack && (scalar(@$mount_args_stack) > 0)) {
+		foreach my $tmp_arg (@$mount_args_stack) {
+			if (defined($tmp_arg) && ($tmp_arg ne '')) {
+				push(@cmd_stack, $tmp_arg);
+			}
+		}
+	}
 
 	push(
 		@cmd_stack,
@@ -6985,6 +7027,14 @@ Arguments to be passed to du. If not specified, the default is -csh.
 GNU du supports -csh, BSD du supports -csk, Solaris du doesn't support
 -c at all. The GNU version is recommended, since it offers the most
 features.
+
+=back
+
+B<mount_args  -o offset=1048576>
+
+=over 4
+
+Arguments to be passed to mount. If not specified, the default is none.
 
 =back
 

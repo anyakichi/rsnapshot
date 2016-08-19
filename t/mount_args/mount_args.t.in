@@ -1,0 +1,12 @@
+#!@PERL@
+
+use strict;
+use Test::More tests => 2;
+use SysWrap;
+
+# make sure snap_root directory does not exist before we start
+ok(! remove_snapshot_root(),
+	" snapshot root does not exist before testing starts");
+
+ok(rsnapshot_output("-t -c @TEST@/mount_args/conf/mount_args.conf hourly") =~ m#^@MOUNT@ -o ro -t ufs -o ufstype=44bsd -o offset=1048576#m,
+	"mount_args parsed");

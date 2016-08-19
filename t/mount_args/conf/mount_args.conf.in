@@ -1,0 +1,14 @@
+config_version	1.2
+snapshot_root	@SNAP@
+cmd_rsync		@RSYNC@
+linux_lvm_cmd_lvcreate	@LVCREATE@
+linux_lvm_cmd_lvremove	@LVREMOVE@
+linux_lvm_cmd_mount	@MOUNT@
+linux_lvm_cmd_umount	@UMOUNT@
+linux_lvm_snapshotsize	1G
+linux_lvm_snapshotname	rsnapshot
+linux_lvm_vgpath	/dev
+linux_lvm_mountpath	@TEST@/mnt
+mount_args		-o ro
+interval		hourly	6
+backup			lvm://vg00@TEST@/mount_args/conf/mount_args.conf	localhost/	+mount_args=-t ufs -o ufstype=44bsd -o offset=1048576
